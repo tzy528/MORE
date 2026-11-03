@@ -1,85 +1,112 @@
-# MORE：多阶响应能量图异常检测
+# MORE: Multi-Order Response Energy for Graph Anomaly Detection
 
-MORE（Multi-Order Response Energy）利用多阶图响应能量相对于典型水平的偏离作为无标签异常证据，并通过图关系构造三元组，学习更有区分性的异常分数。
+MORE (Multi-Order Response Energy) uses node-wise deviations from typical response energy levels across multiple graph responses as label-free anomaly evidence. It incorporates graph relationships through triplet-guided learning to obtain more discriminative anomaly scores.
 
-本仓库**一次运行一个数据集**，默认运行 `yelpchi`，固定训练 **30 个 epoch**，**不使用 early stopping**。训练集与测试集按 **8:2** 分层划分，不另设验证集，使用最后一个 epoch 的模型进行测试。
+This repository runs **one dataset at a time**. By default, it runs `yelpchi` for **30 epochs** with **early stopping disabled**. Nodes are stratified into training and test sets at an **80:20 ratio**, without a validation set. The model from the final epoch is used for testing.
 
-## 1. 环境与依赖
+## 1. Requirements
 
-- Python 3.10 或更高版本。
-- PyTorch 2.1 或更高版本，支持 CPU 或 CUDA。
-- NumPy、SciPy、scikit-learn，见 `requirements.txt`。
-- 读取 GADBench 的 DGL 二进制图时，另需安装与 PyTorch/CUDA 匹配的 DGL。
-- 读取 MATLAB v7.3 文件时，另需安装 `h5py`。
+- Python 3.10 or later.
+- PyTorch 2.1 or later, with CPU or CUDA support.
+- NumPy, SciPy, and scikit-learn; see `requirements.txt`.
+- DGL compatible with your PyTorch/CUDA installation, if loading DGL graph binaries.
+- `h5py`, if loading MATLAB v7.3 files.
 
-先根据设备安装 [PyTorch](https://pytorch.org/get-started/locally/)，再安装其余依赖：
+First install [PyTorch](https://pytorch.org/get-started/locally/) for your hardware, then install the dependencies:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-使用 DGL 数据文件时，请根据 [DGL 安装说明](https://www.dgl.ai/pages/start.html)选择与本地环境匹配的版本。仅使用普通 MAT/NPZ 数据时不需要 DGL。MATLAB v7.3 支持可单独安装：
+For DGL data files, follow the [DGL installation guide](https://www.dgl.ai/pages/start.html) to select a compatible version. DGL is not required for standard MAT/NPZ files. MATLAB v7.3 support can be installed separately:
 
 ```bash
 python -m pip install h5py
 ```
 
-## 2. 数据下载与准备
+## 2. Dataset Download and Preparation
 
-数据文件不随代码上传。可从下述论文的官方项目获取数据：
+Dataset files are not included in this repository. Only the dataset selected for the current run needs to be available locally.
 
-> Tang J, Hua F, Gao Z, Zhao P, Li J. GADBench: Revisiting and Benchmarking Supervised Graph Anomaly Detection. Advances in Neural Information Processing Systems, 2023, 36: 29628–29653.
+### Dataset sources
 
-- [GADBench 官方仓库与数据说明](https://github.com/squareRoot3/GADBench#dataset-preparation)
-- [官方 README 提供的数据集下载链接](https://drive.google.com/file/d/1txzXrzwBBAOEATXmfKzMUUKaXh6PJeR1/view?usp=sharing)
+The datasets other than **Flickr, Weibo, and Questions** can be downloaded from the GitHub repository accompanying **A Label-Free Heterophily-Guided Approach for Unsupervised Graph Fraud Detection**:
 
-只需下载并放入本次要运行的数据集，无需准备全部数据。GADBench 不包含本论文全部数据版本；Flickr 和论文中的小规模 YelpChi 需按论文原始来源另行获取。
+- [HUGE-GAD](https://github.com/CampanulaBells/HUGE-GAD)
 
-### 数据版本对应关系
+For the five datasets used in the MORE paper, use the following sources and check that the downloaded versions match these statistics:
 
-**GADBench 的 YelpChi 为 45,954 节点的完整版，对应本论文的 YelpChiFull；本论文的 YelpChi 为 23,831 节点的另一版本。不能通过改文件名将两者视为同一数据集。**
-
-| 论文数据集 | 论文节点数 | 论文异常节点数 | 论文属性维数 | 数据准备说明 |
+| Dataset | Nodes | Anomalous nodes | Attributes | Source |
 | --- | ---: | ---: | ---: | --- |
-| Flickr | 7,575 | 450 | 12,047 | 按论文原始来源获取 |
-| YelpChi | 23,831 | 1,217 | 32 | 默认运行目标，需准备这一版本 |
-| Weibo | 8,405 | 868 | 400 | 可从 GADBench 获取，并核对统计 |
-| Questions | 48,921 | 1,460 | 301 | 可从 GADBench 获取，并核对统计 |
-| YelpChiFull | 45,954 | 6,677 | 32 | 对应 GADBench 的 YelpChi |
+| Flickr | 7,575 | 450 | 12,047 | Original source cited in the paper |
+| YelpChi | 23,831 | 1,217 | 32 | [HUGE-GAD](https://github.com/CampanulaBells/HUGE-GAD) |
+| Weibo | 8,405 | 868 | 400 | [GAL](https://github.com/DM2-ND/GAL); convert the files as described below |
+| Questions | 48,921 | 1,460 | 301 | [heterophilous-graphs](https://github.com/yandex-research/heterophilous-graphs) |
+| YelpChiFull | 45,954 | 6,677 | 32 | [HUGE-GAD](https://github.com/CampanulaBells/HUGE-GAD) |
 
-如使用 GADBench 下载的无扩展名 `yelpchi` 文件，建议将其命名为 `YelpChiFull`，然后运行 `--dataset YelpChiFull`。程序读取图内容，不依赖扩展名判断其真实格式；启动时打印实际节点数、异常数和预处理后的属性维数。
+**YelpChi and YelpChiFull are different dataset versions.** The default `yelpchi` run expects the version with 23,831 nodes. Use `--dataset YelpChiFull` for the version with 45,954 nodes. Renaming a file does not make the two versions equivalent.
 
-将数据放在项目下的 `datasets/`，例如小规模 YelpChi 使用 `datasets/yelpchi.mat`；下载的完整版使用 `datasets/YelpChiFull`。也可用 `--data-dir` 指定其他目录。
+### Weibo
 
-支持以下格式：
+The Weibo dataset can be downloaded from the repository accompanying **Error-Bounded Graph Anomaly Loss for GNNs**:
 
-- `.mat`：属性字段支持 `Attributes`、`features`、`X` 等；邻接矩阵支持 `Network`、`homo`、`adj` 等；标签支持 `Label`、`labels`、`y` 等。
-- `.npz` / `.npy`：图字典，支持属性、邻接矩阵或 `edge_index`，以及标签；只加载可信文件。
-- DGL 二进制图：支持 `.bin`、无扩展名文件及带 DGL 文件头的其他命名；节点属性字段为 `feat`/`feature`/`features`/`x`，标签为 `label`/`labels`/`y`。应使用同构图版本。
+- [GAL](https://github.com/DM2-ND/GAL)
 
-标签约定：`0` 为正常，`1` 为异常，`-1` 为未知。训练损失、参考统计与三元组采样均不使用节点真实标签；标签只用于分层划分和最终评估。未知标签节点加入无监督训练集，不参与评估，因此 **8:2 比例针对有标签节点**。若没有未知标签，比例即针对全部节点，整数节点数按 sklearn 的取整规则处理。
+Use the preprocessing script `convert_weibo_to_mat(1).py` in the `datasets/` directory to combine the following five files into a single `.mat` file:
 
-## 3. 运行命令
+- `weibo_s_features_bow.pkl`
+- `weibo_s_features_loc.pkl`
+- `weibo_s_graph_u2p.pkl`
+- `weibo_s_graph_u2u.pkl`
+- `weibo_s_labels_u.pkl`
 
-在项目根目录运行。默认命令为：
+Ensure that the conversion script is present in `datasets/`, configure its input and output paths for your local files, and save the converted graph as `datasets/Weibo.mat`. The training script reads the converted graph rather than the five raw pickle files.
+
+### Questions
+
+The Questions dataset can be downloaded from the repository accompanying **A Critical Look at the Evaluation of GNNs under Heterophily: Are We Really Making Progress?**:
+
+- [heterophilous-graphs](https://github.com/yandex-research/heterophilous-graphs)
+
+The upstream datasets are provided in its `data/` directory. Place the Questions NPZ file in this repository's `datasets/` directory, for example as `datasets/Questions.npz`.
+
+The upstream file stores each undirected edge once. The MORE loader symmetrizes the adjacency matrix automatically. It also creates a new 80:20 stratified split instead of using the upstream split masks.
+
+### Local files and supported formats
+
+Place your data in `datasets/`, for example `datasets/yelpchi.mat`, `datasets/Weibo.mat`, `datasets/Questions.npz`, or `datasets/YelpChiFull`. Alternatively, specify another directory with `--data-dir`.
+
+The loader detects DGL binaries by their file header, including files with a `.mat` extension. It prints the actual node count, anomaly count, and attribute dimension after preprocessing at startup.
+
+Supported formats:
+
+- `.mat`: feature keys include `Attributes`, `features`, and `X`; adjacency keys include `Network`, `homo`, and `adj`; label keys include `Label`, `labels`, and `y`.
+- `.npz` / `.npy`: graph dictionaries containing attributes, an adjacency matrix or `edge_index`, and labels. Load only trusted files.
+- DGL graph binaries: `.bin`, extensionless files, or files identified by the DGL header. Node feature keys include `feat`, `feature`, `features`, and `x`; label keys include `label`, `labels`, and `y`. Use homogeneous graph versions.
+
+Labels are encoded as `0` for genuine nodes, `1` for anomalous nodes, and `-1` for unknown labels. Ground-truth labels are used only for stratified splitting and final evaluation, not for training losses, reference statistics, or triplet sampling. Nodes with unknown labels are added to the unsupervised training set and excluded from evaluation. Thus, the **80:20 ratio applies to nodes with known labels**. When all labels are known, it applies to all nodes, subject to scikit-learn's integer rounding.
+
+## 3. Running the Code
+
+Run commands from the repository root. The default command is:
 
 ```bash
 python run_fast.py
 ```
 
-等价的显式命令：
+The equivalent explicit command is:
 
 ```bash
 python run_fast.py --data-dir datasets --dataset yelpchi --epochs 30 --seeds 42 --output-dir runs/yelpchi
 ```
 
-运行从 GADBench 下载的 YelpChi 完整版：
+To run YelpChiFull downloaded from HUGE-GAD:
 
 ```bash
 python run_fast.py --data-dir datasets --dataset YelpChiFull --epochs 30 --seeds 42 --output-dir runs/yelpchifull
 ```
 
-切换其他数据集时，每条命令仅指定一个数据集：
+To switch datasets, specify only one dataset in each command:
 
 ```bash
 python run_fast.py --dataset Weibo --epochs 30 --output-dir runs/weibo
@@ -87,78 +114,78 @@ python run_fast.py --dataset Flickr --epochs 10 --output-dir runs/flickr
 python run_fast.py --dataset Questions --epochs 10 --output-dir runs/questions
 ```
 
-同一数据集可运行多个随机种子，例如：
+Multiple random seeds can be used for the same dataset:
 
 ```bash
 python run_fast.py --dataset yelpchi --epochs 30 --seeds 42 43 44 45 46 --output-dir runs/yelpchi_5seeds
 ```
 
-以上五个种子是使用示例，不代表已核实论文原实验使用的种子列表。汇总文件报告指定种子下的均值和标准差。
+The five seeds above are examples, not a verified list of the seeds used in the original experiments. The summary file reports the mean and standard deviation across the specified seeds.
 
-默认自动选择可用的 CUDA，否则使用 CPU。也可指定设备：
+The device is selected automatically: CUDA when available, otherwise CPU. You can also select it explicitly:
 
 ```bash
 python run_fast.py --dataset yelpchi --device cuda:0 --output-dir runs/yelpchi_cuda
 python run_fast.py --dataset yelpchi --device cpu --output-dir runs/yelpchi_cpu
 ```
 
-每次运行请指定新的输出目录，程序不覆盖已有实验目录。`--datasets` 保留为 `--dataset` 的别名，但同样只能接收一个数据集，不接受 `all` 或多个名称。使用 `python run_fast.py --help` 查看全部参数。
+Use a new output directory for each run; existing experiment directories are not overwritten. `--datasets` is retained as an alias for `--dataset`, but it also accepts only one dataset. Neither `all` nor multiple dataset names are accepted. Run `python run_fast.py --help` to see all options.
 
-## 4. 默认设置与实现
+## 4. Default Settings and Implementation
 
-| 设置 | 默认值 |
+| Setting | Default |
 | --- | --- |
-| 数据集 | yelpchi |
-| 训练 epoch | 30 |
-| Early stopping | 关闭，无验证集与最佳轮次选择 |
-| 划分 | train:test = 8:2，分层随机划分 |
-| 最终模型 | 最后一轮模型 |
-| 模型版本 | `homo`，即完整 MORE |
-| 图计算 | `full`，整图精确计算 |
-| 隐藏维数 / 表示维数 | 64 / 32 |
-| 最高阶数 K / 分数上限 c | 3 / 20 |
-| 学习率 / weight decay | 0.001 / 0.0005 |
+| Dataset | yelpchi |
+| Training epochs | 30 |
+| Early stopping | Disabled; no validation set or best-epoch selection |
+| Split | Stratified training:test = 80:20 |
+| Final model | Model from the final epoch |
+| Model variant | `homo`, the complete MORE model |
+| Graph computation | `full`, exact full-graph computation |
+| Hidden / representation dimension | 64 / 32 |
+| Maximum order K / score cap c | 3 / 20 |
+| Learning rate / weight decay | 0.001 / 0.0005 |
 | q0 / δsame / δrank | 0.5 / 0.1 / 0.25 |
-| 排序 margin / 关系 margin / 温度 | 0.1 / 0.1 / 0.1 |
+| Ranking margin / relation margin / temperature | 0.1 / 0.1 / 0.1 |
 | λrank / λhom / λvar | 1 / 1 / 0.05 |
-| 候选池刷新 / 分数统计记录周期 | 每 5 轮 / 每 5 轮 |
-| 每轮更新次数 | 整图模式下默认 1 次 |
+| Candidate-pool refresh / score-statistics logging | Every 5 epochs / every 5 epochs |
+| Parameter updates per epoch | 1 by default in full-graph mode |
 
-主要实现对应论文式 (4)–(17)：MLP 编码；以 `L-I = -D^(-1/2) A D^(-1/2)` 计算 Chebyshev 响应；仅使用第 1 至 K 阶；对响应平方和作 `log1p`；使用训练节点的 median/MAD 归一化；对双向偏离取跨阶最大值并截断；构造相邻低偏离节点对和高偏离非邻居；使用排序损失、三元组关系损失与表示方差约束。
+The main implementation follows Eqs. (4)-(17) in the paper: MLP encoding; Chebyshev responses using `L-I = -D^(-1/2) A D^(-1/2)`; scoring with orders 1 through K; `log1p` of squared response norms; training-node median/MAD normalization; the maximum absolute deviation across orders with score clipping; triplets consisting of a connected low-deviation pair and a higher-deviation non-neighbor; and the ranking, triplet relation, and representation variance losses.
 
-参考统计与候选池按周期刷新，刷新后统计量在当前周期内固定，不对 median/MAD 或采样过程求导。训练中记录损失与分数分布；测试标签只在训练完成后计算一次 AUROC、AUPRC（average precision），不用于选择模型。可加 `--no-evaluate-test` 仅保存模型与分数。
+Reference statistics and candidate pools are refreshed periodically. Statistics remain fixed within each refresh interval, and gradients are not propagated through median/MAD estimation or sampling. Training logs contain losses and score distributions. Test AUROC and AUPRC (average precision) are computed once after training and are not used for model selection. Add `--no-evaluate-test` to save the model and scores without computing test metrics.
 
-属性预处理默认移除常量列，再进行 StandardScaler 标准化；稀疏属性不减均值，稠密属性减均值。该步骤使用全图可见属性，不使用标签。删除常量列可能使实际输入维数小于论文原始统计。可用 `--preprocessing legacy` 保留常量列进行对照。
+By default, attribute preprocessing removes constant columns and applies StandardScaler. Sparse attributes are scaled without centering; dense attributes are centered. This step uses all observed node attributes without labels. Removing constant columns may reduce the input dimension relative to the raw dataset statistics in the paper. Use `--preprocessing legacy` to retain constant columns for comparison.
 
-若显存不足，可显式启用有界子图计算：
+If GPU memory is insufficient, bounded subgraph computation can be enabled explicitly:
 
 ```bash
 python run_fast.py --dataset YelpChiFull --graph-mode bounded --gpu-budget-gb 8 --cache-gb 2 --core-nodes 2048 --halo-nodes 16384 --halo-edges 2000000 --output-dir runs/yelpchifull_bounded
 ```
 
-**有界模式会截断邻域/边，并限制每个 core 内的三元组候选，与论文整图公式不严格等价。** `--graph-mode auto` 也可能自动选择该模式；正式与论文对照时应使用默认 `full`。`--gpu-budget-gb` 是内存规划估计，不是显存分配硬限制。
+**Bounded mode truncates neighborhoods/edges and restricts triplet candidates to each core, so it is not strictly equivalent to the full-graph formulation in the paper.** `--graph-mode auto` may also select bounded mode. Use the default `full` mode when comparing against the paper. `--gpu-budget-gb` controls a planning estimate, not a hard GPU memory limit.
 
-## 5. 输出文件
+## 5. Output Files
 
-| 文件 | 内容 |
+| File | Contents |
 | --- | --- |
-| `config.json` | 本次完整参数 |
-| `results.csv` / `summary.csv` | 各 seed 结果与汇总 |
-| `execution_plan.json` | 整图/子图计算方式和内存估算 |
-| `feature_audit.json` | 预处理后的属性统计 |
-| `split_counts.json` | train/val/test 的节点数与异常数，val 为 0 |
-| `history.csv` | 各轮损失、约束数量和参数更新次数 |
-| `score_history.csv` | 分数分布、参考统计与触顶比例，不含测试指标 |
-| `final_scores.npz` | 最终分数、各阶有符号偏离、参考统计和划分索引；val 为空 |
-| `model.pt` | 最后一轮参数和运行配置 |
-| `result.json` | 单次运行结果，包含最终 epoch 和 early_stop=false |
+| `config.json` | Complete run configuration |
+| `results.csv` / `summary.csv` | Per-seed results and aggregate statistics |
+| `execution_plan.json` | Full-graph/subgraph execution mode and memory estimates |
+| `feature_audit.json` | Attribute statistics after preprocessing |
+| `split_counts.json` | Node and anomaly counts for train/val/test; val contains 0 nodes |
+| `history.csv` | Per-epoch losses, constraint counts, and parameter updates |
+| `score_history.csv` | Score distributions, reference statistics, and clipping fractions; no test metrics |
+| `final_scores.npz` | Final scores, signed deviations by order, reference statistics, and split indices; val is empty |
+| `model.pt` | Final-epoch model parameters and run configuration |
+| `result.json` | Individual run results, including the final epoch and early_stop=false |
 
-## 6. 检查
+## 6. Checks
 
 ```bash
 python -m unittest -v test_fast.py
 ```
 
-包含数据预处理、8:2 划分、三元组采样及权重、响应能量/归一化的 CPU 检查；安装 PyTorch 后还会检查数值、梯度、损失公式、单数据集接口和小图端到端运行。未安装 PyTorch 时，相应测试会显示跳过。
+The CPU checks cover attribute preprocessing, the 80:20 split, triplet sampling and weights, response energies, and normalization. With PyTorch installed, additional checks cover numerical agreement, gradients, loss formulas, the single-dataset interface, and end-to-end execution on small graphs. Tests requiring PyTorch are skipped when it is unavailable.
 
-本次整理环境没有 PyTorch/DGL，也没有真实数据集，因此未验证真实数据训练、GPU 显存或论文表格数值；不能将本代码包视为已经完成论文全部结果复现。逐项核对结果见 `PAPER_ALIGNMENT.md`。
+The environment used to prepare this package did not include PyTorch/DGL or the real datasets. Real-dataset training, GPU memory usage, and the numerical results reported in the paper have therefore not been validated in that environment. See `PAPER_ALIGNMENT.md` for the implementation review.
