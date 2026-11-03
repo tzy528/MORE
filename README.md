@@ -52,7 +52,7 @@ The Weibo dataset can be downloaded from the repository accompanying **Error-Bou
 
 - [GAL](https://github.com/DM2-ND/GAL)
 
-Use the preprocessing script `convert_weibo_to_mat(1).py` in the `datasets/` directory to combine the following five files into a single `.mat` file:
+Use the preprocessing script `convert_weibo_to_mat.py` in the `datasets/` directory to combine the following five files into a single `.mat` file:
 
 - `weibo_s_features_bow.pkl`
 - `weibo_s_features_loc.pkl`
