@@ -38,7 +38,7 @@ For the five datasets used in the MORE paper, use the following sources and chec
 
 | Dataset | Nodes | Anomalous nodes | Attributes | Source |
 | --- | ---: | ---: | ---: | --- |
-| Flickr | 7,575 | 450 | 12,047 | Original source cited in the paper |
+| Flickr | 7,575 | 450 | 12,047 | [Original source cited in the paper](https://github.com/kaize0409/GCN_AnomalyDetection_pytorch/tree/main) |
 | YelpChi | 23,831 | 1,217 | 32 | [HUGE-GAD](https://github.com/CampanulaBells/HUGE-GAD) |
 | Weibo | 8,405 | 868 | 400 | [GAL](https://github.com/DM2-ND/GAL); convert the files as described below |
 | Questions | 48,921 | 1,460 | 301 | [heterophilous-graphs](https://github.com/yandex-research/heterophilous-graphs) |
